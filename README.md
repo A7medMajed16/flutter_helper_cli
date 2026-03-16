@@ -252,7 +252,7 @@ flutter_helper_cli/
 
 ## 📄 License
 
-This project is open source and available for personal and commercial use.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
