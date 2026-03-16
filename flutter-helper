@@ -1,0 +1,126 @@
+#!/bin/bash
+#  flutter-helper — Central wrapper for Custom CLIs
+#  Version: 1.0.2
+# ============================================================
+
+set -e
+
+VERSION="1.0.2"
+
+# ── Colors ──────────────────────────────────────────────────
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
+# Check for version flag
+if [[ "$1" == "-v" ]] || [[ "$1" == "--version" ]]; then
+    echo "flutter-helper version $VERSION"
+    exit 0
+fi
+
+info()    { echo -e "${CYAN}ℹ ${NC}$1"; }
+success() { echo -e "${GREEN}✅ ${NC}$1"; }
+warn()    { echo -e "${YELLOW}⚠️  ${NC}$1"; }
+error()   { echo -e "${RED}❌ ${NC}$1"; exit 1; }
+
+options=(
+    "Init Project"
+    "Create Feature"
+    "Add Dependency"
+    "Add Firebase Dependency"
+    "Build Release"
+)
+
+cursor=0
+
+move_cursor() {
+    local dir=$1
+    cursor=$((cursor + dir))
+    if [ $cursor -lt 0 ]; then
+        cursor=0
+    elif [ $cursor -ge ${#options[@]} ]; then
+        cursor=$((${#options[@]} - 1))
+    fi
+}
+
+render_menu() {
+    if [ -n "$FIRST_RENDER" ]; then
+        unset FIRST_RENDER
+    else
+        echo -en "\033[${#options[@]}A"
+    fi
+
+    for i in "${!options[@]}"; do
+        if [ "$i" -eq "$cursor" ]; then
+            echo -e "${GREEN}> ${options[$i]}${NC}\033[K"
+        else
+            echo -e "  ${options[$i]}\033[K"
+        fi
+    done
+}
+
+FIRST_RENDER=1
+tput civis
+echo -e "${BOLD}╔══════════════════════════════════════════════╗${NC}"
+echo -e "${BOLD}║      Flutter Helper CLI v$VERSION            ║${NC}"
+echo -e "${BOLD}╚══════════════════════════════════════════════╝${NC}"
+echo -e "${BOLD}Select a tool to run (Up/Down to move, Enter to confirm):${NC}"
+
+while true; do
+    render_menu
+    
+    IFS= read -rsn1 key
+
+    if [[ $key == $'\x1b' ]]; then
+        read -rsn2 key2
+        if [[ $key2 == "[A" ]]; then
+            move_cursor -1
+        elif [[ $key2 == "[B" ]]; then
+            move_cursor 1
+        fi
+    elif [[ "$key" == "" ]]; then
+        break
+    fi
+done
+
+tput cnorm
+echo ""
+
+case $cursor in
+    0) # Init Project
+        echo -e "${BOLD}${CYAN}Running Init Project...${NC}"
+        # Prompt for path
+        echo -n "Enter core source path (Leave empty for default /Users/ahmedmajed/Desktop/Projects/core): "
+        read -r corePath
+        if [ -z "$corePath" ]; then
+            feature initProject
+        else
+            feature initProject "$corePath"
+        fi
+        ;;
+    1) # Create Feature
+        echo -e "${BOLD}${CYAN}Running Create Feature...${NC}"
+        echo -n "Enter new feature name: "
+        read -r featureName
+        if [ -n "$featureName" ]; then
+            feature create "$featureName"
+        else
+            error "Feature name cannot be empty."
+        fi
+        ;;
+    2) # Add Dependency
+        echo -e "${BOLD}${CYAN}Running Add Dependency...${NC}"
+        add-dependencies
+        ;;
+    3) # Add Firebase Dependency
+        echo -e "${BOLD}${CYAN}Running Add Firebase Dependency...${NC}"
+        add-firebase
+        ;;
+    4) # Build Release
+        echo -e "${BOLD}${CYAN}Running Build Release...${NC}"
+        flutter-release
+        ;;
+esac

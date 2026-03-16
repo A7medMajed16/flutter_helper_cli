@@ -1,0 +1,103 @@
+#!/bin/bash
+# ============================================================
+#  init-project — Standalone CLI to initialize Clean Architecture
+#  Run from any Dart/Flutter project directory.
+# ============================================================
+
+set -e
+
+# ── Colors ──────────────────────────────────────────────────
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
+info()    { echo -e "${CYAN}ℹ ${NC}$1"; }
+success() { echo -e "${GREEN}✅ ${NC}$1"; }
+warn()    { echo -e "${YELLOW}⚠️  ${NC}$1"; }
+error()   { echo -e "${RED}❌ ${NC}$1"; exit 1; }
+
+targetPath="${PWD}"
+
+# Try to resolve core source from arg, env var, or fallback to parent dir
+coreSource="$1"
+resolvedMainCorePath="${coreSource:-${FEATURE_CORE_SOURCE:-/Users/ahmedmajed/Desktop/Projects/core}}"
+resolvedCorePath="$resolvedMainCorePath/core"
+
+projectPath="$targetPath/lib"
+destinationPath="$projectPath/core"
+
+info "Source path: ${BOLD}$resolvedCorePath${NC}"
+info "Destination path: ${BOLD}$destinationPath${NC}"
+
+if [ ! -d "$resolvedCorePath" ]; then
+    error "Source directory does not exist: $resolvedCorePath"
+fi
+
+if [ ! -d "$destinationPath" ]; then
+    mkdir -p "$destinationPath"
+    success "Created destination directory: ${BOLD}$destinationPath${NC}"
+fi
+
+cp -R "$resolvedCorePath/"* "$destinationPath/" 2>/dev/null || true
+success "Core folders copied successfully from: $resolvedCorePath"
+
+featuresPath="$projectPath/features"
+if [ ! -d "$featuresPath" ]; then
+    mkdir -p "$featuresPath"
+    success "Created empty features directory: ${BOLD}$featuresPath${NC}"
+else
+    info "Features directory already exists: $featuresPath"
+fi
+
+mainFolderPath="$resolvedMainCorePath/main"
+libPath="$targetPath/lib"
+
+info "Copying files from main folder..."
+echo -e "  Source: $mainFolderPath"
+echo -e "  Destination: $libPath"
+
+if [ -d "$mainFolderPath" ]; then
+    cp -R "$mainFolderPath/"* "$libPath/" 2>/dev/null || true
+    success "Main folder files copied successfully"
+fi
+
+yamlFilesPath="$resolvedMainCorePath/yaml_files"
+projectRoot="$targetPath"
+
+info "Copying files from yaml_files folder..."
+echo -e "  Source: $yamlFilesPath"
+echo -e "  Destination: $projectRoot"
+
+if [ -d "$yamlFilesPath" ]; then
+    cp -R "$yamlFilesPath/"* "$projectRoot/" 2>/dev/null || true
+    success "YAML files copied successfully"
+fi
+    
+pubspecPath="$projectRoot/pubspec.yaml"
+if [ -f "$pubspecPath" ]; then
+    info "Appending flutter_launcher_icons config to pubspec.yaml..."
+    cat <<EOF >> "$pubspecPath"
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  web:
+    generate: true
+    image_path: "lib/core/common/assets/images/launcher_icon.png"
+  image_path: "lib/core/common/assets/images/launcher_icon.png"
+  min_sdk_android: 21
+  adaptive_icon_foreground: "lib/core/common/assets/images/launcher_icon.png"
+  remove_alpha_ios: true
+EOF
+
+    # Packages are now added separatedly via add-dependencies
+fi
+
+echo ""
+echo -e "${BOLD}╔══════════════════════════════════════════════╗${NC}"
+echo -e "${BOLD}║      === Project Initialized! ===            ║${NC}"
+echo -e "${BOLD}╚══════════════════════════════════════════════╝${NC}"
+echo ""

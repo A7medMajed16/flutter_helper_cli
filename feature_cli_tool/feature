@@ -1,0 +1,165 @@
+#!/bin/bash
+
+# ============================================================
+#  feature — Global Clean Architecture Feature Boilerplate
+#  Run from any Dart/Flutter project directory.
+# ============================================================
+
+set -e
+
+# ── Colors ──────────────────────────────────────────────────
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
+# ── Helpers ─────────────────────────────────────────────────
+info()    { echo -e "${CYAN}ℹ ${NC}$1"; }
+success() { echo -e "${GREEN}✅ ${NC}$1"; }
+warn()    { echo -e "${YELLOW}⚠️  ${NC}$1"; }
+error()   { echo -e "${RED}❌ ${NC}$1"; exit 1; }
+
+toPascalCase() {
+    # convert snake_case or kebab-case to PascalCase
+    echo "$1" | awk -F'[-_ ]' '{for(i=1;i<=NF;i++) printf "%s", toupper(substr($i,1,1)) substr($i,2);}'
+}
+
+# ── Commands ────────────────────────────────────────────────
+initProject() {
+    local coreSource="$1"
+    
+    # 1. Run add-dependencies First
+    info "Running interactive dependency selector..."
+    if command -v add-dependencies &> /dev/null; then
+        add-dependencies
+    else
+        warn "add-dependencies command not found in PATH. Make sure it is installed and executable."
+    fi
+    
+    # 2. Run init-project
+    info "Running project initialization..."
+    if command -v init-project &> /dev/null; then
+        init-project "$coreSource"
+    else
+        warn "init-project command not found in PATH. Make sure it is installed and executable."
+    fi
+}
+
+createFeature() {
+    local featureName="$1"
+    local targetPath="${PWD}"
+    local projectPath="$targetPath/lib/features/$featureName"
+    
+    echo ""
+    info "Creating feature: ${BOLD}$featureName${NC}"
+    
+    local dirs=(
+        "$projectPath/presentation/bloc"
+        "$projectPath/presentation/screens"
+        "$projectPath/presentation/widgets"
+        "$projectPath/domain/entities"
+        "$projectPath/domain/repositories"
+        "$projectPath/domain/params"
+        "$projectPath/domain/usecases"
+        "$projectPath/data/models"
+        "$projectPath/data/repositories"
+        "$projectPath/data/datasources/local_datasources"
+        "$projectPath/data/datasources/remote_datasources"
+    )
+    
+    for dir in "${dirs[@]}"; do
+        if [ ! -d "$dir" ]; then
+            mkdir -p "$dir"
+            echo -e "  ${GREEN}+${NC} Created directory: ${dir#$targetPath/}"
+        else
+            echo -e "  ${YELLOW}~${NC} Directory exists: ${dir#$targetPath/}"
+        fi
+    done
+    
+    # Files
+    local screenFile="$projectPath/presentation/screens/${featureName}_screen.dart"
+    local repoFile="$projectPath/domain/params/${featureName}_repo.dart"
+    local repoImplFile="$projectPath/data/repositories/${featureName}_repo_impl.dart"
+    local localDsFile="$projectPath/data/datasources/local_datasources/${featureName}_local_datasources.dart"
+    local remoteDsFile="$projectPath/data/datasources/remote_datasources/${featureName}_remote_datasources.dart"
+    
+    if [ ! -f "$screenFile" ]; then
+        local className=$(toPascalCase "$featureName")
+        cat <<EOF > "$screenFile"
+import 'package:auto_route/auto_route.dart';
+import 'package:flutter/material.dart';
+
+@RoutePage()
+class ${className}Screen extends StatelessWidget {
+  const ${className}Screen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold();
+  }
+}
+EOF
+        echo -e "  ${GREEN}+${NC} Created file: ${screenFile#$targetPath/}"
+    else
+        echo -e "  ${YELLOW}~${NC} File exists: ${screenFile#$targetPath/}"
+    fi
+    
+    for file in "$repoFile" "$repoImplFile" "$localDsFile" "$remoteDsFile"; do
+        if [ ! -f "$file" ]; then
+            touch "$file"
+            echo -e "  ${GREEN}+${NC} Created file: ${file#$targetPath/}"
+        else
+            echo -e "  ${YELLOW}~${NC} File exists: ${file#$targetPath/}"
+        fi
+    done
+    
+    echo ""
+    success "Feature \"${BOLD}$featureName${NC}\" created."
+    
+    # Run build_runner
+    echo ""
+    info "Running: dart run build_runner build --delete-conflicting-outputs"
+    if dart run build_runner build --delete-conflicting-outputs; then
+        echo ""
+        success "build_runner completed successfully."
+    else
+        echo ""
+        warn "build_runner exited with an error. You may need to run it manually."
+    fi
+}
+
+
+# ── Main ────────────────────────────────────────────────────
+cmd="$1"
+arg2="$2"
+
+if [ -z "$cmd" ] || [ "$cmd" = "-h" ] || [ "$cmd" = "--help" ]; then
+    echo -e "${BOLD}Usage:${NC} feature <command> [arguments]"
+    echo ""
+    echo -e "Global command-line tool for scaffolding clean architecture features."
+    echo ""
+    echo -e "${BOLD}Available Commands:${NC}"
+    echo -e "  ${CYAN}initProject [path]${NC}  Initializes project with clean architecture core structure."
+    echo -e "  ${CYAN}create <name>${NC}       Creates a clean architecture feature folder structure."
+    echo -e "${BOLD}Examples:${NC}"
+    echo -e "  feature create splash"
+    echo -e "  feature initProject /path/to/core"
+    exit 0
+fi
+
+case "$cmd" in
+    initProject|init-project)
+        initProject "$arg2"
+        ;;
+    create)
+        if [ -z "$arg2" ]; then
+            error "Invalid command or missing feature name.\nUsage: feature create <name>"
+        fi
+        createFeature "$arg2"
+        ;;
+    *)
+        error "Invalid command: $cmd\nRun 'feature -h' for help."
+        ;;
+esac
