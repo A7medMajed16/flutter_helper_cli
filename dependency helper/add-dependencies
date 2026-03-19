@@ -40,6 +40,7 @@ items=(
     "I|pretty_dio_logger"
     "I|shared_preferences"
     "I|flutter_secure_storage"
+    "I|freezed_annotation"
 
     "C|Navigation & Routing"
     "I|auto_route"
