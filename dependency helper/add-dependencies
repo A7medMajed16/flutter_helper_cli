@@ -41,6 +41,9 @@ items=(
     "I|shared_preferences"
     "I|flutter_secure_storage"
     "I|freezed_annotation"
+    "I|json_annotation"
+    "D|freezed"
+    "D|json_serializable"
 
     "C|Navigation & Routing"
     "I|auto_route"
@@ -56,6 +59,7 @@ items=(
     "I|liquid_pull_to_refresh"
     "I|lottie"
     "I|cupertino_icons"
+    "I|vibration"
 
     "C|Media & Files"
     "I|image"
