@@ -138,9 +138,36 @@ fi
 # Build change label string
 CHANGE_LABEL=$(IFS=', '; echo "${CHANGE_LABELS[*]}")
 
-# ── Prompt for release notes ───────────────────────────────
+# ── Prompt for release notes (multi-line) ─────────────────
 echo ""
-read -p "$(echo -e ${BOLD}"Add notes (press Enter to skip): "${NC})" RELEASE_NOTES
+echo -e "${BOLD}Add notes (one line each, empty line to finish / skip):${NC}"
+RELEASE_NOTES=""
+while IFS= read -r NOTE_LINE; do
+    [ -z "$NOTE_LINE" ] && break
+    if [ -z "$RELEASE_NOTES" ]; then
+        RELEASE_NOTES="$NOTE_LINE"
+    else
+        RELEASE_NOTES="${RELEASE_NOTES}
+${NOTE_LINE}"
+    fi
+done
+
+# ── Ask for build environment (default: Live) ─────────────
+echo ""
+echo -e "${BOLD}Build environment?${NC}"
+echo -e "  ${GREEN}1)${NC} 🟢 Live"
+echo -e "  ${GREEN}2)${NC} 📍 Local"
+echo -e "  ${GREEN}3)${NC} 🧪 Live Test"
+echo ""
+read -p "$(echo -e ${BOLD}"Choose (1/2/3) [1]: "${NC})" BUILD_ENV_CHOICE
+BUILD_ENV_CHOICE=${BUILD_ENV_CHOICE:-1}
+
+case $BUILD_ENV_CHOICE in
+    1) BUILD_ENV="🟢 Live" ;;
+    2) BUILD_ENV="📍 Local" ;;
+    3) BUILD_ENV="🧪 Live Test" ;;
+    *) error "Invalid choice: ${BUILD_ENV_CHOICE}. Please select 1, 2, or 3." ;;
+esac
 
 # ── Ask about git commit (before build) ────────────────────
 GIT_COMMIT="n"
@@ -279,15 +306,28 @@ fi
 
 info "Sending to Telegram..."
 
-CAPTION="🚀 *${PROJECT_NAME}* v${NEW_VERSION}
-📝 ${CHANGE_LABEL}
+# Escape Telegram HTML special chars in free text
+escape_html() {
+    printf '%s' "$1" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g'
+}
+
+CAPTION="🚀 <b>$(escape_html "$PROJECT_NAME")</b> v${NEW_VERSION}
+📝 $(escape_html "$CHANGE_LABEL")
 🔢 Build: ${NEW_BUILD}"
 
-# Append notes if provided
+# Append notes if provided (preserve multi-line)
 if [ -n "$RELEASE_NOTES" ]; then
     CAPTION="${CAPTION}
-📋 Notes: ${RELEASE_NOTES}"
+📋 Notes:
+$(escape_html "$RELEASE_NOTES")"
 fi
+
+# Append build environment
+CAPTION="${CAPTION}
+⚙️ Env: ${BUILD_ENV}"
+
+# Telegram limits: document caption 1024, message text 4096
+CAPTION_LEN=${#CAPTION}
 
 if [ "$BUILD_AAB" = true ]; then
     # AAB: send text notification only (file too large for Telegram)
@@ -297,16 +337,40 @@ if [ "$BUILD_AAB" = true ]; then
     RESPONSE=$(curl -s -X POST \
         "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
         -F "chat_id=${TELEGRAM_CHAT_ID}" \
-        -F "text=${CAPTION}" \
-        -F "parse_mode=Markdown")
+        --form-string "text=${CAPTION}" \
+        -F "parse_mode=HTML") || RESPONSE='{"ok":false,"description":"Telegram request failed"}'
 else
-    # APK: send the file
-    RESPONSE=$(curl -s -X POST \
-        "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
-        -F "chat_id=${TELEGRAM_CHAT_ID}" \
-        -F "document=@${TELEGRAM_FILE}" \
-        -F "caption=${CAPTION}" \
-        -F "parse_mode=Markdown")
+    # APK: send the file (+ notes as separate message if caption too long)
+    if [ "$CAPTION_LEN" -gt 1024 ]; then
+        SHORT_CAPTION="🚀 <b>$(escape_html "$PROJECT_NAME")</b> v${NEW_VERSION}
+📝 $(escape_html "$CHANGE_LABEL")
+🔢 Build: ${NEW_BUILD}
+⚙️ Env: ${BUILD_ENV}"
+
+        RESPONSE=$(curl -s -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
+            -F "chat_id=${TELEGRAM_CHAT_ID}" \
+            -F "document=@${TELEGRAM_FILE}" \
+            --form-string "caption=${SHORT_CAPTION}" \
+            -F "parse_mode=HTML") || RESPONSE='{"ok":false,"description":"Telegram request failed"}'
+
+        if echo "$RESPONSE" | grep -q '"ok":true' && [ -n "$RELEASE_NOTES" ]; then
+            NOTES_MSG="📋 <b>Notes</b> — <b>$(escape_html "$PROJECT_NAME")</b> v${NEW_VERSION}
+$(escape_html "$RELEASE_NOTES")"
+            curl -s -X POST \
+                "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+                -F "chat_id=${TELEGRAM_CHAT_ID}" \
+                --form-string "text=${NOTES_MSG}" \
+                -F "parse_mode=HTML" >/dev/null || true
+        fi
+    else
+        RESPONSE=$(curl -s -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
+            -F "chat_id=${TELEGRAM_CHAT_ID}" \
+            -F "document=@${TELEGRAM_FILE}" \
+            --form-string "caption=${CAPTION}" \
+            -F "parse_mode=HTML") || RESPONSE='{"ok":false,"description":"Telegram request failed"}'
+    fi
 fi
 
 # Check if Telegram API returned success
@@ -328,9 +392,11 @@ fi
 # ── Cleanup build artifacts ────────────────────────────────
 echo ""
 info "Cleaning up build files..."
-flutter clean
-flutter pub get
-success "Build files cleaned up"
+if flutter clean && flutter pub get; then
+    success "Build files cleaned up"
+else
+    warn "Build cleanup failed; release was still created."
+fi
 
 # ── Git commit & push (if user said yes) ───────────────────
 if [ "$GIT_COMMIT" = "y" ] || [ "$GIT_COMMIT" = "Y" ]; then
