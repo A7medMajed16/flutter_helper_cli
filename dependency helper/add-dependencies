@@ -60,6 +60,7 @@ items=(
     "I|lottie"
     "I|cupertino_icons"
     "I|vibration"
+    "I|sliver_tools"
 
     "C|Media & Files"
     "I|image"
@@ -85,6 +86,14 @@ items=(
     "I|hijri"
     "I|ntp"
 
+    "C|Location & Maps"
+    "I|map_launcher"
+    "I|geolocator"
+    "I|package_info_plus"
+    "I|geocoding"
+    "I|latlong"
+
+
     "C|Environment & Tooling"
     "I|flutter_dotenv"
     "I|flutter_launcher_icons"
@@ -92,6 +101,17 @@ items=(
     "I|flutter_local_notifications"
     "I|flutter_lints"
     "D|flutter_gen_runner"
+
+    "C|Firebase"
+    "I|firebase_core"
+    "I|firebase_messaging"
+    "I|firebase_remote_config"
+
+    "C|Config"
+    "I|foundation"
+
+    "C|Background Tasks"
+    "I|flutter_foreground_task"
 )
 
 selected=()
