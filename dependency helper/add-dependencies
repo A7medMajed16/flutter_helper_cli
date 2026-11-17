@@ -26,7 +26,18 @@ if [ ! -f "$targetPath/pubspec.yaml" ]; then
     error "No pubspec.yaml found. Please run this command at the root of a Flutter project."
 fi
 
+# Item types:
+#   C = category header
+#   R = required (always added, can't be unchecked, shown as red *)
+#   I = dependency      D = dev_dependency
+#   O = optional core feature: "O|package|feature", unchecked by default.
+#       When ALL packages of a feature are selected, its code in lib/core
+#       (blocks marked //#optional:<feature>) is uncommented automatically.
 items=(
+    "C|Design System (required — Flutter 3.50+)"
+    "R|material_ui"
+    "R|cupertino_ui"
+
     "C|Architecture & State Management"
     "I|bloc"
     "I|flutter_bloc"
@@ -61,14 +72,15 @@ items=(
     "I|cupertino_icons"
     "I|vibration"
     "I|sliver_tools"
+    "I|package_info_plus"
 
     "C|Media & Files"
     "I|image"
     "I|image_picker"
     "I|image_cropper"
     "I|file_picker"
-    "I|video_player"
-    "I|chewie"
+    "O|video_player|video"
+    "O|chewie|video"
     "I|just_audio"
 
     "C|Utilities & Platform"
@@ -83,15 +95,14 @@ items=(
     "I|pinput"
     "I|table_calendar"
     "I|logo_motion"
-    "I|hijri"
+    "O|hijri|hijri"
     "I|ntp"
 
-    "C|Location & Maps"
-    "I|map_launcher"
-    "I|geolocator"
-    "I|package_info_plus"
-    "I|geocoding"
-    "I|latlong"
+    "C|Location & Maps (optional — enables core location code)"
+    "O|geolocator|location"
+    "O|geocoding|location"
+    "O|latlong2|location"
+    "O|map_launcher|location"
 
 
     "C|Environment & Tooling"
@@ -114,9 +125,15 @@ items=(
     "I|flutter_foreground_task"
 )
 
+is_selectable() {
+    [[ "$1" == "I|"* ]] || [[ "$1" == "D|"* ]] || [[ "$1" == "R|"* ]] || [[ "$1" == "O|"* ]]
+}
+
 selected=()
 for i in "${!items[@]}"; do
-    if [[ "${items[$i]}" == "I|"* ]] || [[ "${items[$i]}" == "D|"* ]]; then
+    if [[ "${items[$i]}" == "O|"* ]]; then
+        selected[$i]=0
+    elif is_selectable "${items[$i]}"; then
         selected[$i]=1
     else
         selected[$i]=0
@@ -133,7 +150,7 @@ move_cursor() {
         if [ $new_cursor -lt 0 ] || [ $new_cursor -ge ${#items[@]} ]; then
             break
         fi
-        if [[ "${items[$new_cursor]}" == "I|"* ]] || [[ "${items[$new_cursor]}" == "D|"* ]]; then
+        if is_selectable "${items[$new_cursor]}"; then
             cursor=$new_cursor
             break
         fi
@@ -178,18 +195,27 @@ render_menu() {
     fi
 
     for (( i=$start_idx; i<$end_idx; i++ )); do
-        IFS="|" read -r type name <<< "${items[$i]}"
+        IFS="|" read -r type name feature <<< "${items[$i]}"
         if [ "$type" == "C" ]; then
             echo -e "${BOLD}${CYAN}--- $name ---${NC}\033[K"
         else
             local check=" "
-            if [ "${selected[$i]}" -eq 1 ]; then
+            local tag=""
+            if [ "$type" == "R" ]; then
+                check="${RED}*${NC}"
+                tag="${RED}(required)"
+            elif [ "${selected[$i]}" -eq 1 ]; then
                 check="${GREEN}✓${NC}"
             fi
+            if [ "$type" == "D" ]; then
+                tag="(dev)"
+            elif [ "$type" == "O" ]; then
+                tag="${CYAN}(optional: ${feature})"
+            fi
             if [ "$i" -eq "$cursor" ]; then
-                echo -e "${GREEN}> [${check}${GREEN}] $name${YELLOW} $([ "$type" == "D" ] && echo '(dev)') ${NC}\033[K"
+                echo -e "${GREEN}> [${check}${GREEN}] $name${YELLOW} ${tag} ${NC}\033[K"
             else
-                echo -e "  [${check}] $name${YELLOW} $([ "$type" == "D" ] && echo '(dev)') ${NC}\033[K"
+                echo -e "  [${check}] $name${YELLOW} ${tag} ${NC}\033[K"
             fi
         fi
     done
@@ -231,6 +257,10 @@ while true; do
     elif [[ "$key" == "" ]]; then
         break
     elif [[ "$key" == " " ]]; then
+        # Required packages can't be unchecked
+        if [[ "${items[$cursor]}" == "R|"* ]]; then
+            continue
+        fi
         if [ "${selected[$cursor]}" -eq 1 ]; then
             selected[$cursor]=0
         else
@@ -242,9 +272,9 @@ done
 packages_to_add=()
 dev_packages_to_add=()
 for i in "${!items[@]}"; do
-    IFS="|" read -r type name <<< "${items[$i]}"
+    IFS="|" read -r type name feature <<< "${items[$i]}"
     if [ "${selected[$i]}" -eq 1 ]; then
-        if [ "$type" == "I" ]; then
+        if [ "$type" == "I" ] || [ "$type" == "R" ] || [ "$type" == "O" ]; then
             packages_to_add+=("$name")
         elif [ "$type" == "D" ]; then
             dev_packages_to_add+=("$name")
@@ -276,3 +306,62 @@ if [ ${#dev_packages_to_add[@]} -gt 0 ]; then
         error "Failed to add dev packages."
     fi
 fi
+
+# ── Optional core features ──────────────────────────────────
+# Uncomment the //#optional:<feature> blocks in lib/core for every feature
+# whose packages were all selected. The start marker is renamed to
+# //#optional-enabled:<feature> so running this again never double-uncomments.
+enable_feature() {
+    local feature=$1
+    local coreDir="$targetPath/lib/core"
+    [ -d "$coreDir" ] || return 0
+    local files
+    files=$(grep -rlF --include='*.dart' "//#optional:$feature" "$coreDir" || true)
+    if [ -z "$files" ]; then
+        info "Feature ${BOLD}$feature${NC}: no commented code to enable (already enabled?)"
+        return 0
+    fi
+    while IFS= read -r file; do
+        START="//#optional:$feature" END="//#end-optional:$feature" perl -i -pe '
+            if (/^\s*\Q$ENV{START}\E\s*$/) { $in = 1; s/#optional:/#optional-enabled:/; next }
+            if (/^\s*\Q$ENV{END}\E\s*$/)   { $in = 0; next }
+            s{^(\s*)// ?}{$1} if $in;
+        ' "$file"
+        success "Enabled ${BOLD}$feature${NC} in ${file#$targetPath/}"
+    done <<< "$files"
+}
+
+features=""
+for i in "${!items[@]}"; do
+    IFS="|" read -r type name feature <<< "${items[$i]}"
+    if [ "$type" == "O" ]; then
+        case " $features " in
+            *" $feature "*) ;;
+            *) features="$features $feature" ;;
+        esac
+    fi
+done
+
+for feature in $features; do
+    total=0
+    picked=0
+    missing=""
+    for i in "${!items[@]}"; do
+        IFS="|" read -r type name f <<< "${items[$i]}"
+        if [ "$type" == "O" ] && [ "$f" == "$feature" ]; then
+            total=$((total + 1))
+            if [ "${selected[$i]}" -eq 1 ]; then
+                picked=$((picked + 1))
+            else
+                missing="$missing $name"
+            fi
+        fi
+    done
+    if [ "$picked" -eq "$total" ]; then
+        echo ""
+        enable_feature "$feature"
+    elif [ "$picked" -gt 0 ]; then
+        echo ""
+        warn "Feature ${BOLD}$feature${NC} stays commented out in lib/core — also select:${BOLD}$missing${NC}"
+    fi
+done

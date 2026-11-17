@@ -76,6 +76,16 @@ if [ -d "$yamlFilesPath" ]; then
     success "YAML files copied successfully"
 fi
     
+# macOS Finder metadata must not end up in the project
+find "$libPath" -name .DS_Store -delete 2>/dev/null || true
+
+# The default counter test references MyApp, which main.dart replaces
+defaultTest="$projectRoot/test/widget_test.dart"
+if [ -f "$defaultTest" ] && grep -q "MyApp" "$defaultTest"; then
+    rm "$defaultTest"
+    success "Removed default test/widget_test.dart (it referenced MyApp)"
+fi
+
 pubspecPath="$projectRoot/pubspec.yaml"
 if [ -f "$pubspecPath" ]; then
     info "Appending flutter_launcher_icons config to pubspec.yaml..."
@@ -100,4 +110,9 @@ echo ""
 echo -e "${BOLD}╔══════════════════════════════════════════════╗${NC}"
 echo -e "${BOLD}║      === Project Initialized! ===            ║${NC}"
 echo -e "${BOLD}╚══════════════════════════════════════════════╝${NC}"
+echo ""
+info "Next: run ${BOLD}add-dependencies${NC} to install packages."
+echo -e "  • ${RED}*${NC} packages are required by lib/core and always installed."
+echo -e "  • Optional features (location, video, hijri) are commented out in lib/core;"
+echo -e "    select all of a feature's packages and its code is enabled automatically."
 echo ""
